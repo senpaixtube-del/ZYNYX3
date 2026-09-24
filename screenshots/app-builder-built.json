@@ -1,0 +1,38 @@
+{
+  "url": "http://127.0.0.1:8081/",
+  "viewports": {
+    "desktop": {
+      "width": 1280,
+      "height": 800,
+      "status": 200,
+      "title": "ZYNYX",
+      "hasCanvas": false,
+      "bodyTextLen": 753,
+      "bodyTextHash": "3e8ff67f8965526664b32f3f94139d585b8c3e316f5e8d84c4c3bb0dc9dc53cc",
+      "bodyTextPrefix": "ZYNYX فایل ویرایش افزودن نور رندر راهنما مدل لوک‌دو انیم اسکریپت",
+      "horizontalOverflow": false,
+      "consoleErrors": [],
+      "pageErrors": [],
+      "screenshot": "/workspace/screenshots/app-builder-built.png"
+    },
+    "mobile": {
+      "width": 390,
+      "height": 844,
+      "status": 200,
+      "title": "ZYNYX",
+      "hasCanvas": false,
+      "bodyTextLen": 346,
+      "bodyTextHash": "c5e96af4ea9ed6311d510451a39846d31fd298622439f2ef2bb3ecaea1baca71",
+      "bodyTextPrefix": "ZYNYX EN آبجکت سیم توپر متریال رندر اسنپ رندر فریم استودیو… ZYNY",
+      "horizontalOverflow": false,
+      "consoleErrors": [],
+      "pageErrors": [],
+      "screenshot": "/workspace/screenshots/app-builder-built-mobile.png"
+    }
+  },
+  "brandWarnings": [],
+  "authWarnings": [],
+  "verdictFile": "/workspace/screenshots/app-builder-built.json",
+  "divergesFromBaseline": false,
+  "baselineReasons": []
+}
