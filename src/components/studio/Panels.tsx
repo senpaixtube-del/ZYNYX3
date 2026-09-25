@@ -13,6 +13,7 @@ import { PRIMITIVE_DEFAULTS } from "@/lib/studio/geometry";
 import { t } from "@/lib/studio/i18n";
 import { activeObject, useStudio } from "@/lib/studio/store";
 import { MATERIAL_PRESETS, type Primitive } from "@/lib/studio/types";
+import { SAMPLE_CHARACTERS, assetFromSample, mannequinPack } from "@/lib/studio/characters";
 import { cn } from "@/lib/utils";
 
 function NumField({
@@ -108,7 +109,7 @@ export function Outliner() {
 
 export function AddShelf() {
   const lang = useStudio((s) => s.lang);
-  const prims = (Object.keys(PRIMITIVE_DEFAULTS) as Primitive[]).filter((k) => k !== "baked");
+  const prims = (Object.keys(PRIMITIVE_DEFAULTS) as Primitive[]).filter((k) => k !== "baked" && k !== "asset");
   const gens: Primitive[] = ["gear", "stairs", "helix", "column", "tree", "rock", "vase", "dna", "text", "knot"];
   const basics = prims.filter((p) => !gens.includes(p));
   const add = (p: Primitive) => useStudio.getState().addMesh(p);
@@ -139,6 +140,42 @@ export function AddShelf() {
             {PRIMITIVE_DEFAULTS[p].label[lang]}
           </button>
         ))}
+      </div>
+      <p className="mt-3 px-1 pb-1 text-2xs font-medium text-subtle uppercase">{t(lang, "characters")}</p>
+      <div className="grid grid-cols-1 gap-1">
+        {SAMPLE_CHARACTERS.map((c) => (
+          <button
+            key={c.id}
+            type="button"
+            onClick={() => {
+              const obj = assetFromSample(c);
+              useStudio.getState().addAsset(obj);
+              useStudio.getState().setPlaying(true);
+              useStudio.getState().setLayout("anim");
+            }}
+            className="rounded-sm border border-border bg-bg-elevated px-2 py-2 text-start text-2xs text-fg hover:border-border-strong hover:bg-bg-hover"
+          >
+            <span className="block font-medium">{lang === "fa" ? c.nameFa : c.nameEn}</span>
+            <span className="text-subtle">{c.tag}</span>
+          </button>
+        ))}
+        <button
+          type="button"
+          onClick={() => {
+            useStudio.getState().appendObjects(mannequinPack());
+            useStudio.getState().setPlaying(true);
+          }}
+          className="rounded-sm border border-border bg-bg-elevated px-2 py-2 text-2xs text-fg hover:bg-bg-hover"
+        >
+          {t(lang, "mannequins")}
+        </button>
+        <button
+          type="button"
+          onClick={() => useStudio.getState().loadCharacters()}
+          className="rounded-sm bg-accent px-2 py-2 text-2xs font-medium text-accent-fg"
+        >
+          {t(lang, "startChars")}
+        </button>
       </div>
       <p className="mt-3 px-1 pb-1 text-2xs font-medium text-subtle uppercase">{t(lang, "lights")}</p>
       <div className="grid grid-cols-2 gap-1">
@@ -237,6 +274,37 @@ export function Properties() {
             onChange={(e) => u({ name: e.target.value })}
           />
         </label>
+        {(obj.kind === "asset" || (obj.clips && obj.clips.length > 0)) && (
+          <label className="block text-2xs text-muted">
+            {t(lang, "clip")}
+            <select
+              className="mt-1 h-8 w-full rounded-sm border border-border bg-bg-input px-2 text-xs text-fg"
+              value={obj.clipName ?? obj.clips?.[0] ?? ""}
+              onChange={(e) => useStudio.getState().setClipName(obj.id, e.target.value)}
+            >
+              {(obj.clips ?? []).map((c) => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+        {obj.kind === "asset" && (
+          <NumField
+            label={t(lang, "clipSpeed")}
+            value={obj.clipSpeed ?? 1}
+            min={0.1}
+            max={3}
+            step={0.05}
+            onChange={(v) => useStudio.getState().setClipSpeed(obj.id, v)}
+          />
+        )}
+        {obj.kind === "asset" && (obj.loadError || obj.assetMissing) && (
+          <p className="rounded-sm border border-danger/40 bg-danger/10 px-2 py-1.5 text-2xs text-danger">
+            {obj.loadError || t(lang, "reimport")}
+          </p>
+        )}
       </div>
       <div className="space-y-2">
         <h3 className="text-2xs font-medium text-subtle uppercase">{t(lang, "transform")}</h3>

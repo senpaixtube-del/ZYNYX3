@@ -20,10 +20,11 @@ export type Primitive =
   | "text"
   | "dna"
   | "rounded"
-  | "baked";
+  | "baked"
+  | "asset";
 
 export type LightType = "sun" | "point" | "spot" | "area";
-export type ObjectKind = "mesh" | "light" | "camera" | "empty";
+export type ObjectKind = "mesh" | "light" | "camera" | "empty" | "asset";
 export type ModifierType =
   | "subdiv"
   | "mirror"
@@ -118,6 +119,13 @@ export interface StudioObject {
   keyframes: Keyframe[];
   baked?: BakedGeom;
   parentId?: string;
+  assetUrl?: string;
+  assetFormat?: string;
+  clips?: string[];
+  clipName?: string;
+  clipSpeed?: number;
+  assetMissing?: boolean;
+  loadError?: string;
 }
 
 export const ENV_PRESETS: EnvPreset[] = [
@@ -188,6 +196,8 @@ export const MATERIAL_PRESETS: Record<string, Partial<Material>> = {
     emissiveIntensity: 3.2,
     roughness: 0.3,
   },
+  Skin: { name: "Skin", color: "#c99578", metalness: 0, roughness: 0.52, sheen: 0.4 },
+  Wood: { name: "Wood", color: "#6b4423", metalness: 0, roughness: 0.72 },
   Pearl: {
     name: "Pearl",
     color: "#f0e6dc",
@@ -196,8 +206,6 @@ export const MATERIAL_PRESETS: Record<string, Partial<Material>> = {
     iridescence: 0.85,
     clearcoat: 0.4,
   },
-  Skin: { name: "Skin", color: "#c99578", metalness: 0, roughness: 0.52, sheen: 0.4 },
-  Wood: { name: "Wood", color: "#6b4423", metalness: 0, roughness: 0.72 },
 };
 
 export function uid(prefix = "ob"): string {

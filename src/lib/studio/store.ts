@@ -20,6 +20,7 @@ import {
   uid,
 } from "./types";
 import { PRIMITIVE_DEFAULTS, evaluateGeometry } from "./geometry";
+import { SAMPLE_CHARACTERS, assetFromSample, mannequinPack } from "./characters";
 
 export interface ConsoleLine {
   kind: "in" | "out" | "err" | "info";
@@ -109,6 +110,12 @@ export interface StudioState {
   joinSelected: () => void;
   originToGeometry: () => void;
   applySnapToActive: () => void;
+  appendObjects: (objs: StudioObject[], selectId?: string | null) => void;
+  addAsset: (obj: StudioObject) => string;
+  setClipName: (id: string, clipName: string) => void;
+  setClipSpeed: (id: string, clipSpeed: number) => void;
+  loadCharacters: () => void;
+  loadAnimStage: () => void;
 
   pushHistory: () => void;
   undo: () => void;
@@ -824,6 +831,60 @@ export const useStudio = create<StudioState>((set, get) => ({
       rotation: [q(obj.rotation[0], Math.PI / 12), q(obj.rotation[1], Math.PI / 12), q(obj.rotation[2], Math.PI / 12)],
       scale: [Math.max(0.05, q(obj.scale[0], 0.1)), Math.max(0.05, q(obj.scale[1], 0.1)), Math.max(0.05, q(obj.scale[2], 0.1))],
     });
+  },
+
+  appendObjects: (objs, selectId) => {
+    if (!objs.length) return;
+    get().pushHistory();
+    set({
+      objects: [...get().objects, ...objs],
+      selectedIds: selectId ? [selectId] : [objs[0]!.id],
+      activeId: selectId ?? objs[0]!.id,
+      showWelcome: false,
+    });
+  },
+  addAsset: (obj) => {
+    get().appendObjects([obj], obj.id);
+    return obj.id;
+  },
+  setClipName: (id, clipName) => get().updateObject(id, { clipName }),
+  setClipSpeed: (id, clipSpeed) => get().updateObject(id, { clipSpeed }),
+  loadCharacters: () => {
+    const objects: StudioObject[] = [];
+    objects.push(
+      meshDefaults("plane", objects, {
+        name: "Stage",
+        position: [0, 0, 0],
+        params: { size: 18 },
+        material: { ...MATERIAL_PRESETS.Concrete, name: "Stage" },
+      }),
+    );
+    objects.push(lightObj("sun", objects, [6, 10, 4]));
+    objects.push(lightObj("point", objects, [-4, 3, 2]));
+    objects.push(lightObj("spot", objects, [2, 5, -5]));
+    const samples = SAMPLE_CHARACTERS.slice(0, 4);
+    const placed = samples.map((s, i) =>
+      assetFromSample(s, { position: [(i - 1.5) * 2.4, s.position[1], 0] }),
+    );
+    objects.push(...placed);
+    const pack = mannequinPack();
+    for (const o of pack) {
+      if (!o.parentId) o.position = [o.position[0], o.position[1], 3.2];
+    }
+    objects.push(...pack);
+    get().replaceScene(objects, placed[0]?.id ?? null);
+    set({
+      showWelcome: false,
+      layout: "anim",
+      playing: true,
+      frameStart: 1,
+      frameEnd: 240,
+      shading: "material",
+      envPreset: "studio",
+    });
+  },
+  loadAnimStage: () => {
+    get().loadCharacters();
   },
 
   log: (line) => set({ consoleLines: [...get().consoleLines.slice(-200), line] }),

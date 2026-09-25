@@ -1,10 +1,11 @@
 import { i as __toESM } from "../_runtime.mjs";
-import { _ as require_jsx_runtime, a as GizmoHelper, c as PerspectiveCamera, i as GizmoViewport, l as Text, m as useThree, n as Environment, o as TransformControls, p as useFrame, r as Grid, s as OrbitControls, t as ContactShadows, u as Canvas, v as require_react } from "../_libs/@react-three/drei+[...].mjs";
-import { Gt as RepeatWrapping, Kt as SRGBColorSpace, Ut as Raycaster, hn as Vector3, in as TextureLoader, mn as Vector2 } from "../_libs/monogrid__gainmap-js+three.mjs";
-import { t as RectAreaLightUniformsLib } from "../_libs/three.mjs";
-import { a as useStudio, i as evalObjectAtFrame, n as registerCapture, o as evaluateGeometry, r as captureRender, s as geometrySignature } from "./routes-Cii-8syr.mjs";
+import { a as GizmoHelper, b as require_react, c as PerspectiveCamera, d as Canvas, h as useThree, i as GizmoViewport, l as Text, m as useFrame, n as Environment, o as TransformControls, r as Grid, s as OrbitControls, t as ContactShadows, u as Html, y as require_jsx_runtime } from "../_libs/@react-three/drei+[...].mjs";
+import { An as SRGBColorSpace, Sn as Raycaster, Tn as RepeatWrapping, Wn as TextureLoader, cr as Vector3, sr as Vector2, u as AnimationMixer } from "../_libs/monogrid__gainmap-js+three.mjs";
+import { S as clone, x as RectAreaLightUniformsLib } from "../_libs/three.mjs";
+import { n as toast } from "../_libs/sonner.mjs";
+import { a as formatLoadError, c as useStudio, d as registerCapture, i as loadRuntime, l as evaluateGeometry, n as t, o as resolveAssetUrl, r as captureRender, s as evalObjectAtFrame, u as geometrySignature } from "./routes-B5_ZQt4L.mjs";
 import { i as Vignette, n as EffectComposer, r as N8AO, t as Bloom } from "../_libs/@react-three/postprocessing+[...].mjs";
-//#region node_modules/.nitro/vite/services/ssr/assets/Viewport-BccreeUe.js
+//#region node_modules/.nitro/vite/services/ssr/assets/Viewport-XdGZsqc5.js
 var import_react = /* @__PURE__ */ __toESM(require_react());
 var import_jsx_runtime = require_jsx_runtime();
 RectAreaLightUniformsLib.init();
@@ -52,12 +53,30 @@ function StudioMesh({ obj, selected }) {
 	(0, import_react.useEffect)(() => () => geo.dispose(), [geo]);
 	const live = useLive(obj);
 	const mat = obj.material;
-	const map = (0, import_react.useMemo)(() => {
-		if (!mat.mapUrl) return null;
-		const t = new TextureLoader().load(mat.mapUrl);
-		t.colorSpace = SRGBColorSpace;
-		t.wrapS = t.wrapT = RepeatWrapping;
-		return t;
+	const [map, setMap] = (0, import_react.useState)(null);
+	(0, import_react.useEffect)(() => {
+		if (!mat.mapUrl) {
+			setMap(null);
+			return;
+		}
+		let dead = false;
+		const loader = new TextureLoader();
+		resolveAssetUrl(mat.mapUrl).then((url) => new Promise((resolve, reject) => {
+			loader.load(url, resolve, void 0, reject);
+		})).then((tex) => {
+			if (dead) {
+				tex.dispose();
+				return;
+			}
+			tex.colorSpace = SRGBColorSpace;
+			tex.wrapS = tex.wrapT = RepeatWrapping;
+			setMap(tex);
+		}).catch(() => {
+			if (!dead) setMap(null);
+		});
+		return () => {
+			dead = true;
+		};
 	}, [mat.mapUrl]);
 	(0, import_react.useEffect)(() => () => map?.dispose(), [map]);
 	const common = {
@@ -234,11 +253,148 @@ function EmptyNode({ obj, selected }) {
 		children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("axesHelper", { args: [.6] }), selected && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("mesh", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("octahedronGeometry", { args: [.1, 0] }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("meshBasicMaterial", { color: "#e07820" })] })]
 	});
 }
+function AssetNode({ obj, selected }) {
+	const live = useLive(obj);
+	const mixer = (0, import_react.useRef)(null);
+	const clipsRef = (0, import_react.useRef)([]);
+	const [root, setRoot] = (0, import_react.useState)(null);
+	const [failed, setFailed] = (0, import_react.useState)(false);
+	const [errText, setErrText] = (0, import_react.useState)(null);
+	(0, import_react.useEffect)(() => {
+		if (!obj.assetUrl || !obj.assetFormat) {
+			setFailed(true);
+			setRoot(null);
+			setErrText(obj.loadError || t(useStudio.getState().lang, "reimport"));
+			return;
+		}
+		let dead = false;
+		setFailed(false);
+		setErrText(null);
+		loadRuntime(obj.assetUrl, obj.assetFormat).then((loaded) => {
+			if (dead) return;
+			const clone$1 = clone(loaded.root);
+			clone$1.traverse((n) => {
+				const mesh = n;
+				if (mesh.isMesh) {
+					mesh.castShadow = true;
+					mesh.receiveShadow = true;
+				}
+			});
+			mixer.current = new AnimationMixer(clone$1);
+			clipsRef.current = loaded.clips;
+			const names = loaded.clips.map((c) => c.name || "clip");
+			const st = useStudio.getState();
+			const cur = st.objects.find((o) => o.id === obj.id);
+			const patch = {};
+			if (names.length && (!cur?.clips || cur.clips.join("\0") !== names.join("\0"))) patch.clips = names;
+			if (names.length && !cur?.clipName) patch.clipName = names[0];
+			if (cur?.assetMissing) patch.assetMissing = false;
+			if (cur?.loadError) patch.loadError = void 0;
+			if (Object.keys(patch).length) st.updateObject(obj.id, patch);
+			setRoot(clone$1);
+		}).catch((err) => {
+			if (dead) return;
+			const lang = useStudio.getState().lang;
+			const msg = formatLoadError(err, obj.name, lang);
+			setFailed(true);
+			setErrText(msg);
+			const st = useStudio.getState();
+			if (st.objects.find((o) => o.id === obj.id)?.loadError !== msg) {
+				st.updateObject(obj.id, {
+					assetMissing: true,
+					loadError: msg
+				});
+				st.log({
+					kind: "err",
+					text: msg
+				});
+				toast.error(msg);
+			}
+		});
+		return () => {
+			dead = true;
+			mixer.current?.stopAllAction();
+			mixer.current = null;
+			clipsRef.current = [];
+		};
+	}, [
+		obj.assetUrl,
+		obj.assetFormat,
+		obj.id,
+		obj.name
+	]);
+	(0, import_react.useEffect)(() => {
+		const mix = mixer.current;
+		if (!mix || !root) return;
+		mix.stopAllAction();
+		const pick = clipsRef.current.find((c) => c.name === obj.clipName) ?? clipsRef.current[0] ?? null;
+		if (pick) {
+			const action = mix.clipAction(pick);
+			action.enabled = true;
+			action.paused = false;
+			action.play();
+		}
+	}, [obj.clipName, root]);
+	useFrame(() => {
+		const mix = mixer.current;
+		const clip = clipsRef.current.find((c) => c.name === obj.clipName) ?? clipsRef.current[0];
+		if (!mix || !clip) return;
+		const s = useStudio.getState();
+		const speed = obj.clipSpeed ?? 1;
+		const dur = Math.max(.001, clip.duration);
+		const tSec = (s.frame - s.frameStart) / Math.max(1, s.fps) * speed;
+		mix.setTime((tSec % dur + dur) % dur);
+	});
+	return /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("group", {
+		name: obj.id,
+		position: live.skip ? void 0 : live.position,
+		rotation: live.skip ? void 0 : live.rotation,
+		scale: live.skip ? void 0 : live.scale,
+		visible: obj.visible,
+		userData: { id: obj.id },
+		onClick: (e) => {
+			e.stopPropagation();
+			useStudio.getState().select(obj.id, e.shiftKey);
+		},
+		children: [
+			root ? /* @__PURE__ */ (0, import_jsx_runtime.jsx)("primitive", { object: root }) : /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("mesh", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("capsuleGeometry", { args: [
+				.2,
+				1.1,
+				6,
+				12
+			] }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("meshStandardMaterial", {
+				color: failed ? "#d4524a" : "#e07820",
+				wireframe: true
+			})] }),
+			failed && errText && /* @__PURE__ */ (0, import_jsx_runtime.jsx)(Html, {
+				center: true,
+				children: /* @__PURE__ */ (0, import_jsx_runtime.jsx)("div", {
+					className: "max-w-48 rounded-sm bg-bg-elevated/90 px-2 py-1 text-center text-2xs text-danger",
+					children: errText
+				})
+			}),
+			selected && /* @__PURE__ */ (0, import_jsx_runtime.jsxs)("mesh", { children: [/* @__PURE__ */ (0, import_jsx_runtime.jsx)("boxGeometry", { args: [
+				.6,
+				1.8,
+				.6
+			] }), /* @__PURE__ */ (0, import_jsx_runtime.jsx)("meshBasicMaterial", {
+				color: "#e07820",
+				wireframe: true,
+				transparent: true,
+				opacity: .35
+			})] })
+		]
+	});
+}
 function Nodes() {
 	const objects = useStudio((s) => s.objects);
 	const selected = useStudio((s) => s.selectedIds);
 	return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(import_jsx_runtime.Fragment, { children: objects.map((obj) => {
 		const sel = selected.includes(obj.id);
+		if (obj.kind === "asset" || obj.primitive === "asset") return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(AssetNode, {
+			obj,
+			selected: sel
+		}, obj.id);
 		if (obj.kind === "mesh") return /* @__PURE__ */ (0, import_jsx_runtime.jsx)(StudioMesh, {
 			obj,
 			selected: sel

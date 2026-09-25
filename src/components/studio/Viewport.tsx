@@ -5,6 +5,7 @@ import {
   GizmoHelper,
   GizmoViewport,
   Grid,
+  Html,
   OrbitControls,
   PerspectiveCamera,
   TransformControls,
@@ -14,11 +15,16 @@ import { Bloom, EffectComposer, N8AO, Vignette } from "@react-three/postprocessi
 import { useEffect, useMemo, useRef, useState, type ComponentRef } from "react";
 import * as THREE from "three";
 import { RectAreaLightUniformsLib } from "three/addons/lights/RectAreaLightUniformsLib.js";
+import { registerCapture } from "@/lib/studio/viewport-api";
 import { evaluateGeometry, geometrySignature } from "@/lib/studio/geometry";
 import { evalObjectAtFrame, useStudio } from "@/lib/studio/store";
 import { captureRender } from "@/lib/studio/export";
-import { registerCapture } from "@/lib/studio/viewport-api";
+import { formatLoadError, resolveAssetUrl } from "@/lib/studio/asset-db";
+import { loadRuntime } from "@/lib/studio/importers";
+import { t } from "@/lib/studio/i18n";
 import type { StudioObject } from "@/lib/studio/types";
+import { toast } from "sonner";
+import { clone as cloneSkinned } from "three/addons/utils/SkeletonUtils.js";
 
 RectAreaLightUniformsLib.init();
 
@@ -57,12 +63,36 @@ function StudioMesh({ obj, selected }: { obj: StudioObject; selected: boolean })
   useEffect(() => () => geo.dispose(), [geo]);
   const live = useLive(obj);
   const mat = obj.material;
-  const map = useMemo(() => {
-    if (!mat.mapUrl) return null;
-    const t = new THREE.TextureLoader().load(mat.mapUrl);
-    t.colorSpace = THREE.SRGBColorSpace;
-    t.wrapS = t.wrapT = THREE.RepeatWrapping;
-    return t;
+  const [map, setMap] = useState<THREE.Texture | null>(null);
+  useEffect(() => {
+    if (!mat.mapUrl) {
+      setMap(null);
+      return;
+    }
+    let dead = false;
+    const loader = new THREE.TextureLoader();
+    void resolveAssetUrl(mat.mapUrl)
+      .then(
+        (url) =>
+          new Promise<THREE.Texture>((resolve, reject) => {
+            loader.load(url, resolve, undefined, reject);
+          }),
+      )
+      .then((tex) => {
+        if (dead) {
+          tex.dispose();
+          return;
+        }
+        tex.colorSpace = THREE.SRGBColorSpace;
+        tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+        setMap(tex);
+      })
+      .catch(() => {
+        if (!dead) setMap(null);
+      });
+    return () => {
+      dead = true;
+    };
   }, [mat.mapUrl]);
   useEffect(() => () => map?.dispose(), [map]);
   const common = {
@@ -239,6 +269,132 @@ function EmptyNode({ obj, selected }: { obj: StudioObject; selected: boolean }) 
   );
 }
 
+function AssetNode({ obj, selected }: { obj: StudioObject; selected: boolean }) {
+  const live = useLive(obj);
+  const mixer = useRef<THREE.AnimationMixer | null>(null);
+  const clipsRef = useRef<THREE.AnimationClip[]>([]);
+  const [root, setRoot] = useState<THREE.Object3D | null>(null);
+  const [failed, setFailed] = useState(false);
+  const [errText, setErrText] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!obj.assetUrl || !obj.assetFormat) {
+      setFailed(true);
+      setRoot(null);
+      setErrText(obj.loadError || t(useStudio.getState().lang, "reimport"));
+      return;
+    }
+    let dead = false;
+    setFailed(false);
+    setErrText(null);
+    loadRuntime(obj.assetUrl, obj.assetFormat)
+      .then((loaded) => {
+        if (dead) return;
+        const clone = cloneSkinned(loaded.root);
+        clone.traverse((n: THREE.Object3D) => {
+          const mesh = n as THREE.Mesh;
+          if (mesh.isMesh) {
+            mesh.castShadow = true;
+            mesh.receiveShadow = true;
+          }
+        });
+        mixer.current = new THREE.AnimationMixer(clone);
+        clipsRef.current = loaded.clips;
+        const names = loaded.clips.map((c) => c.name || "clip");
+        const st = useStudio.getState();
+        const cur = st.objects.find((o) => o.id === obj.id);
+        const patch: Partial<StudioObject> = {};
+        if (names.length && (!cur?.clips || cur.clips.join("\0") !== names.join("\0"))) patch.clips = names;
+        if (names.length && !cur?.clipName) patch.clipName = names[0];
+        if (cur?.assetMissing) patch.assetMissing = false;
+        if (cur?.loadError) patch.loadError = undefined;
+        if (Object.keys(patch).length) st.updateObject(obj.id, patch);
+        setRoot(clone);
+      })
+      .catch((err) => {
+        if (dead) return;
+        const lang = useStudio.getState().lang;
+        const msg = formatLoadError(err, obj.name, lang);
+        setFailed(true);
+        setErrText(msg);
+        const st = useStudio.getState();
+        const cur = st.objects.find((o) => o.id === obj.id);
+        if (cur?.loadError !== msg) {
+          st.updateObject(obj.id, { assetMissing: true, loadError: msg });
+          st.log({ kind: "err", text: msg });
+          toast.error(msg);
+        }
+      });
+    return () => {
+      dead = true;
+      mixer.current?.stopAllAction();
+      mixer.current = null;
+      clipsRef.current = [];
+    };
+  }, [obj.assetUrl, obj.assetFormat, obj.id, obj.name]);
+
+  useEffect(() => {
+    const mix = mixer.current;
+    if (!mix || !root) return;
+    mix.stopAllAction();
+    const pick = clipsRef.current.find((c) => c.name === obj.clipName) ?? clipsRef.current[0] ?? null;
+    if (pick) {
+      const action = mix.clipAction(pick);
+      action.enabled = true;
+      action.paused = false;
+      action.play();
+    }
+  }, [obj.clipName, root]);
+
+  useFrame(() => {
+    const mix = mixer.current;
+    const clip = clipsRef.current.find((c) => c.name === obj.clipName) ?? clipsRef.current[0];
+    if (!mix || !clip) return;
+    const s = useStudio.getState();
+    const speed = obj.clipSpeed ?? 1;
+    const dur = Math.max(0.001, clip.duration);
+    const tSec = ((s.frame - s.frameStart) / Math.max(1, s.fps)) * speed;
+    mix.setTime(((tSec % dur) + dur) % dur);
+  });
+
+  return (
+    <group
+      name={obj.id}
+      position={live.skip ? undefined : live.position}
+      rotation={live.skip ? undefined : live.rotation}
+      scale={live.skip ? undefined : live.scale}
+      visible={obj.visible}
+      userData={{ id: obj.id }}
+      onClick={(e) => {
+        e.stopPropagation();
+        useStudio.getState().select(obj.id, e.shiftKey);
+      }}
+    >
+      {root ? (
+        <primitive object={root} />
+      ) : (
+        <mesh>
+          <capsuleGeometry args={[0.2, 1.1, 6, 12]} />
+          <meshStandardMaterial color={failed ? "#d4524a" : "#e07820"} wireframe />
+        </mesh>
+      )}
+      {failed && errText && (
+        <Html center>
+          <div className="max-w-48 rounded-sm bg-bg-elevated/90 px-2 py-1 text-center text-2xs text-danger">
+            {errText}
+          </div>
+        </Html>
+      )}
+      {selected && (
+        <mesh>
+          <boxGeometry args={[0.6, 1.8, 0.6]} />
+          <meshBasicMaterial color="#e07820" wireframe transparent opacity={0.35} />
+        </mesh>
+      )}
+    </group>
+  );
+}
+
 function Nodes() {
   const objects = useStudio((s) => s.objects);
   const selected = useStudio((s) => s.selectedIds);
@@ -246,6 +402,7 @@ function Nodes() {
     <>
       {objects.map((obj) => {
         const sel = selected.includes(obj.id);
+        if (obj.kind === "asset" || obj.primitive === "asset") return <AssetNode key={obj.id} obj={obj} selected={sel} />;
         if (obj.kind === "mesh") return <StudioMesh key={obj.id} obj={obj} selected={sel} />;
         if (obj.kind === "light") return <LightNode key={obj.id} obj={obj} selected={sel} />;
         if (obj.kind === "camera") return <CameraNode key={obj.id} obj={obj} selected={sel} />;

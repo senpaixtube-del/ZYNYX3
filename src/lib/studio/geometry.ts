@@ -319,6 +319,8 @@ export function primitiveGeometry(type: Primitive, params: Record<string, number
       return textFallback(num(params, "size", 0.6));
     case "baked":
       return bakedGeo(obj ?? { baked: undefined } as StudioObject);
+    case "asset":
+      return new THREE.BoxGeometry(0.2, 0.2, 0.2);
     default:
       return new THREE.BoxGeometry(1, 1, 1);
   }
@@ -411,6 +413,7 @@ export const PRIMITIVE_DEFAULTS: Record<
   text: { params: { size: 0.55, text: "ZYNYX" }, label: { fa: "متن سه‌بعدی", en: "3D text" } },
   dna: { params: { turns: 4, radius: 0.4, height: 2.4 }, label: { fa: "دی‌ان‌ای", en: "DNA" } },
   baked: { params: {}, label: { fa: "مش واردشده", en: "Imported mesh" } },
+  asset: { params: {}, label: { fa: "کاراکتر / ریگ", en: "Character / rig" } },
 };
 
 void str;

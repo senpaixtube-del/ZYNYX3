@@ -24,7 +24,22 @@ const dict = {
   exportPng: { fa: "خروجی PNG", en: "Export PNG" },
   exportJson: { fa: "خروجی پروژه JSON", en: "Export project JSON" },
   importJson: { fa: "ورود پروژه JSON", en: "Import project JSON" },
-  importGltf: { fa: "ورود GLB / GLTF", en: "Import GLB / GLTF" },
+  importGltf: { fa: "ورود مدل (همه فرمت‌ها)", en: "Import model (all formats)" },
+  importFbx: { fa: "ورود FBX / کاراکتر", en: "Import FBX / character" },
+  characters: { fa: "کاراکترها", en: "Characters" },
+  sampleChars: { fa: "نمونه‌های آماده", en: "Ready samples" },
+  mannequins: { fa: "مانکن‌های استودیو", en: "Studio mannequins" },
+  clip: { fa: "کلیپ انیمیشن", en: "Animation clip" },
+  clipSpeed: { fa: "سرعت کلیپ", en: "Clip speed" },
+  startChars: { fa: "صحنه کاراکتر", en: "Character stage" },
+  formatsHint: {
+    fa: "GLB, GLTF, FBX, OBJ, STL, PLY, DAE, 3DS, 3MF, USDZ, HDR و تصویر",
+    en: "GLB, GLTF, FBX, OBJ, STL, PLY, DAE, 3DS, 3MF, USDZ, HDR and images",
+  },
+  welcomeBody: {
+    fa: "مدل‌سازی، کاراکترهای آماده با انیمیشن، پشتیبانی کامل FBX و ده‌ها فرمت، متریال فیزیکی، اسکالپت، رندر و پایتون bpy — همه در مرورگر.",
+    en: "Modeling, ready animated characters, full FBX and dozens of formats, physical materials, sculpt, render, and bpy Python — in the browser.",
+  },
   undo: { fa: "بازگردانی", en: "Undo" },
   redo: { fa: "ازنو", en: "Redo" },
   delete: { fa: "حذف", en: "Delete" },
@@ -54,10 +69,6 @@ const dict = {
   rendered: { fa: "رندر", en: "Rendered" },
   studio: { fa: "استودیو", en: "Studio" },
   welcomeTitle: { fa: "استودیوی گرافیک سه‌بعدی", en: "Professional 3D DCC" },
-  welcomeBody: {
-    fa: "مدل‌سازی رویه‌ای، متریال فیزیکی، نورپردازی استودیویی، انیمیشن، اسکالپت، رندر و کنسول پایتون سازگار با bpy — همه در مرورگر.",
-    en: "Procedural modeling, physical materials, studio lighting, animation, sculpt, render, and a bpy-compatible Python console — in the browser.",
-  },
   startLookdev: { fa: "شروع با لوک‌دو", en: "Start with lookdev" },
   startEmpty: { fa: "صحنه خالی", en: "Empty scene" },
   startArch: { fa: "معماری", en: "Architecture" },
@@ -126,6 +137,7 @@ const dict = {
   iridescence: { fa: "رنگین‌کمان", en: "Iridescence" },
   envStrength: { fa: "شدت HDRI", en: "HDRI strength" },
   samples: { fa: "نمونه‌ها", en: "Samples" },
+  reimport: { fa: "دوباره ایمپورت کنید", en: "Re-import required" },
 } as const;
 
 export type I18nKey = keyof typeof dict;

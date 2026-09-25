@@ -14,10 +14,12 @@ import {
 } from "lucide-react";
 import { Toaster, toast } from "sonner";
 import { executePython } from "@/lib/studio/bpy";
-import { exportBlenderPython, exportSceneGlb, importGltfFile, downloadText, downloadDataUrl, exportProjectJson, importProjectJson } from "@/lib/studio/export";
+import { exportBlenderPython, exportSceneGlb, downloadText, downloadDataUrl, exportProjectJson, importProjectJson } from "@/lib/studio/export";
+import { IMPORT_ACCEPT, importAnyFile } from "@/lib/studio/importers";
 import { t } from "@/lib/studio/i18n";
+import { annotateMissingAssets } from "@/lib/studio/asset-db";
 import { loadProject, subscribePersist } from "@/lib/studio/persist";
-import { lookdevScene, useStudio } from "@/lib/studio/store";
+import { useStudio } from "@/lib/studio/store";
 import { ENV_PRESETS, type EnvPreset, type LayoutId, type Shading } from "@/lib/studio/types";
 import { captureStill } from "@/lib/studio/viewport-api";
 import { cn } from "@/lib/utils";
@@ -92,20 +94,39 @@ export function StudioApp() {
 
   useEffect(() => {
     setMounted(true);
-    const saved = loadProject();
-    if (saved?.objects?.length) {
-      useStudio.getState().hydrate({
-        objects: saved.objects,
-        lang: saved.lang,
-        pythonCode: saved.pythonCode,
-        envPreset: saved.envPreset as EnvPreset,
-        shading: saved.shading as Shading,
-      });
-    } else {
-      useStudio.setState({ objects: lookdevScene(), hydrated: true });
-    }
-    const unsub = subscribePersist();
-    return () => unsub();
+    let cancelled = false;
+    let unsub: (() => void) | undefined;
+    void (async () => {
+      const saved = loadProject();
+      if (cancelled) return;
+      if (saved?.objects?.length) {
+        const annotated = await annotateMissingAssets(saved.objects);
+        if (cancelled) return;
+        useStudio.getState().hydrate({
+          objects: annotated.objects,
+          lang: saved.lang,
+          pythonCode: saved.pythonCode,
+          envPreset: saved.envPreset as EnvPreset,
+          shading: saved.shading as Shading,
+        });
+        if (annotated.missing) {
+          const fa = saved.lang === "fa";
+          toast.error(
+            fa
+              ? `${annotated.missing} مدل ذخیره‌شده پیدا نشد — دوباره ایمپورت کنید`
+              : `${annotated.missing} saved model(s) missing — re-import them`,
+          );
+        }
+      } else {
+        useStudio.getState().loadCharacters();
+        useStudio.setState({ hydrated: true, showWelcome: true });
+      }
+      if (!cancelled) unsub = subscribePersist();
+    })();
+    return () => {
+      cancelled = true;
+      unsub?.();
+    };
   }, []);
 
   useEffect(() => {
@@ -217,8 +238,17 @@ export function StudioApp() {
             <Item onClick={() => useStudio.getState().loadEmpty()}>{t(lang, "newScene")}</Item>
             <Item onClick={() => useStudio.getState().loadLookdev()}>{t(lang, "lookdev")}</Item>
             <Item onClick={() => useStudio.getState().loadArch()}>{t(lang, "startArch")}</Item>
+            <Item onClick={() => useStudio.getState().loadCharacters()}>{t(lang, "startChars")}</Item>
             <Item onClick={() => fileRef.current?.click()}>{t(lang, "importGltf")}</Item>
-            <Item onClick={() => exportSceneGlb()}>{t(lang, "exportGltf")}</Item>
+            <Item
+              onClick={() => {
+                void exportSceneGlb()
+                  .then(() => toast(lang === "fa" ? "GLB با اسکلت و انیمیشن دانلود شد" : "GLB with skeleton & clips downloaded"))
+                  .catch((err) => toast(String(err)));
+              }}
+            >
+              {t(lang, "exportGltf")}
+            </Item>
             <Item
               onClick={() => {
                 downloadText("zynyx_scene.py", exportBlenderPython(), "text/x-python");
@@ -255,6 +285,7 @@ export function StudioApp() {
             <Item onClick={() => useStudio.getState().addMesh("sphere")}>UV Sphere</Item>
             <Item onClick={() => useStudio.getState().addMesh("gear")}>Gear</Item>
             <Item onClick={() => useStudio.getState().addMesh("column")}>Column</Item>
+            <Item onClick={() => useStudio.getState().loadCharacters()}>{t(lang, "characters")}</Item>
             <Item onClick={() => useStudio.getState().addLight("sun")}>Sun</Item>
           </Menu>
           <Menu label={t(lang, "lighting")}>
@@ -512,16 +543,19 @@ export function StudioApp() {
       <input
         ref={fileRef}
         type="file"
-        accept=".glb,.gltf"
+        accept={IMPORT_ACCEPT}
+        multiple
         className="hidden"
         onChange={async (e) => {
-          const f = e.target.files?.[0];
-          if (!f) return;
-          try {
-            await importGltfFile(f);
-            toast(lang === "fa" ? "مدل وارد شد" : "Imported");
-          } catch (err) {
-            toast(String(err));
+          const files = Array.from(e.target.files ?? []);
+          e.target.value = "";
+          for (const f of files) {
+            try {
+              await importAnyFile(f);
+              toast(lang === "fa" ? `وارد شد: ${f.name}` : `Imported ${f.name}`);
+            } catch (err) {
+              toast(String(err));
+            }
           }
         }}
       />
@@ -565,8 +599,17 @@ function Welcome() {
         <div className="mt-4 grid grid-cols-2 gap-2">
           <button
             type="button"
-            onClick={() => useStudio.getState().loadLookdev()}
+            onClick={() => {
+              useStudio.getState().loadCharacters();
+            }}
             className="rounded-md bg-accent px-3 py-2.5 text-xs font-medium text-accent-fg"
+          >
+            {t(lang, "startChars")}
+          </button>
+          <button
+            type="button"
+            onClick={() => useStudio.getState().loadLookdev()}
+            className="rounded-md border border-border px-3 py-2.5 text-xs text-fg hover:bg-bg-hover"
           >
             {t(lang, "startLookdev")}
           </button>

@@ -1,3 +1,4 @@
+import { isDeadBlobUrl } from "./asset-db";
 import { useStudio } from "./store";
 import type { StudioObject } from "./types";
 
@@ -10,6 +11,26 @@ export interface Persisted {
   envPreset: string;
   pythonCode: string;
   shading: string;
+  missingAssets?: number;
+}
+
+function sanitizeObject(o: StudioObject): StudioObject {
+  let assetUrl = o.assetUrl;
+  let mapUrl = o.material?.mapUrl;
+  let assetMissing = o.assetMissing ?? false;
+  if (assetUrl && isDeadBlobUrl(assetUrl)) {
+    assetUrl = undefined;
+    assetMissing = true;
+  }
+  if (mapUrl && isDeadBlobUrl(mapUrl)) {
+    mapUrl = undefined;
+  }
+  return {
+    ...o,
+    assetUrl,
+    assetMissing,
+    material: { ...o.material, mapUrl },
+  };
 }
 
 export function loadProject(): Persisted | null {
@@ -17,7 +38,10 @@ export function loadProject(): Persisted | null {
   try {
     const raw = localStorage.getItem(KEY) ?? localStorage.getItem(LEGACY);
     if (!raw) return null;
-    return JSON.parse(raw) as Persisted;
+    const data = JSON.parse(raw) as Persisted;
+    const objects = (data.objects ?? []).map(sanitizeObject);
+    const missingAssets = objects.filter((o) => o.assetMissing || (o.kind === "asset" && !o.assetUrl)).length;
+    return { ...data, objects, missingAssets };
   } catch {
     return null;
   }
@@ -27,7 +51,7 @@ export function saveProject() {
   if (typeof localStorage === "undefined") return;
   const s = useStudio.getState();
   const data: Persisted = {
-    objects: s.objects,
+    objects: s.objects.map(sanitizeObject),
     lang: s.lang,
     envPreset: s.envPreset,
     pythonCode: s.pythonCode,

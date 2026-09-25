@@ -1,9 +1,10 @@
 import * as THREE from "three";
 import { GLTFExporter } from "three/addons/exporters/GLTFExporter.js";
-import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+import { clone as cloneSkinned } from "three/addons/utils/SkeletonUtils.js";
 import { evaluateGeometry } from "./geometry";
+import { loadRuntime } from "./importers";
 import { useStudio } from "./store";
-import { defaultMaterial, hexToRgb, uid, type BakedGeom, type StudioObject } from "./types";
+import { hexToRgb, type StudioObject } from "./types";
 
 function downloadBlob(filename: string, blob: Blob) {
   const url = URL.createObjectURL(blob);
@@ -62,29 +63,55 @@ function meshFromObject(obj: StudioObject): THREE.Object3D | null {
   return null;
 }
 
-export function exportSceneGlb(filename = "zynyx.glb") {
+export async function exportSceneGlb(filename = "zynyx.glb") {
   const root = new THREE.Group();
   root.name = "ZYNYX";
-  for (const obj of useStudio.getState().objects) {
+  const animations: THREE.AnimationClip[] = [];
+  const s = useStudio.getState();
+  for (const obj of s.objects) {
     if (!obj.visible) continue;
+    if ((obj.kind === "asset" || obj.primitive === "asset") && obj.assetUrl && obj.assetFormat) {
+      try {
+        const loaded = await loadRuntime(obj.assetUrl, obj.assetFormat);
+        const clone = cloneSkinned(loaded.root);
+        clone.name = obj.name;
+        clone.position.set(...obj.position);
+        clone.rotation.set(...obj.rotation);
+        clone.scale.set(...obj.scale);
+        root.add(clone);
+        for (const clip of loaded.clips) {
+          const c = clip.clone();
+          const used = animations.some((a) => a.name === c.name);
+          if (used) c.name = `${obj.name}_${c.name || "clip"}`;
+          animations.push(c);
+        }
+      } catch (err) {
+        s.log({ kind: "err", text: String(err) });
+      }
+      continue;
+    }
     const node = meshFromObject(obj);
     if (node) root.add(node);
   }
   const exporter = new GLTFExporter();
-  exporter.parse(
-    root,
-    (res) => {
-      if (res instanceof ArrayBuffer) {
-        downloadBlob(filename, new Blob([res], { type: "model/gltf-binary" }));
-      } else {
-        downloadText(filename.replace(/\.glb$/, ".gltf"), JSON.stringify(res, null, 2), "model/gltf+json");
-      }
-    },
-    (err) => {
-      useStudio.getState().log({ kind: "err", text: String(err) });
-    },
-    { binary: true },
-  );
+  await new Promise<void>((resolve, reject) => {
+    exporter.parse(
+      root,
+      (res) => {
+        if (res instanceof ArrayBuffer) {
+          downloadBlob(filename, new Blob([res], { type: "model/gltf-binary" }));
+        } else {
+          downloadText(filename.replace(/\.glb$/, ".gltf"), JSON.stringify(res, null, 2), "model/gltf+json");
+        }
+        resolve();
+      },
+      (err) => {
+        s.log({ kind: "err", text: String(err) });
+        reject(err);
+      },
+      { binary: true, animations },
+    );
+  });
 }
 
 function rgbTuple(hex: string) {
@@ -168,60 +195,13 @@ export function exportBlenderPython(): string {
       lines.push(`cam.name = ${JSON.stringify(obj.name)}`);
       lines.push(`bpy.context.scene.camera = cam`);
       lines.push("");
+    } else if (obj.kind === "asset") {
+      lines.push(`# asset ${JSON.stringify(obj.name)} format=${obj.assetFormat ?? "?"} — import original file in Blender`);
+      lines.push("");
     }
   }
   lines.push(`print("ZYNYX scene imported:", ${s.objects.length}, "objects")`);
   return lines.join("\n");
-}
-
-export async function importGltfFile(file: File) {
-  const buf = await file.arrayBuffer();
-  const loader = new GLTFLoader();
-  const gltf = await loader.parseAsync(buf, "");
-  const added: StudioObject[] = [];
-  gltf.scene.updateMatrixWorld(true);
-  gltf.scene.traverse((node) => {
-    const mesh = node as THREE.Mesh;
-    if (!mesh.isMesh) return;
-    const geo = (mesh.geometry as THREE.BufferGeometry).clone();
-    geo.applyMatrix4(mesh.matrixWorld);
-    geo.center();
-    const pos = geo.getAttribute("position");
-    const nrm = geo.getAttribute("normal");
-    const uv = geo.getAttribute("uv");
-    const baked: BakedGeom = {
-      position: Array.from(pos.array as Float32Array),
-      normal: nrm ? Array.from(nrm.array as Float32Array) : undefined,
-      index: geo.index ? Array.from(geo.index.array as Uint16Array | Uint32Array) : undefined,
-      uv: uv ? Array.from(uv.array as Float32Array) : undefined,
-    };
-    const world = new THREE.Vector3();
-    mesh.getWorldPosition(world);
-    const color =
-      mesh.material && !Array.isArray(mesh.material) && "color" in mesh.material
-        ? "#" + (mesh.material as THREE.MeshStandardMaterial).color.getHexString()
-        : "#c5c6ca";
-    added.push({
-      id: uid("im"),
-      name: mesh.name || file.name.replace(/\.(gltf|glb)$/i, ""),
-      kind: "mesh",
-      visible: true,
-      position: [world.x, world.y, world.z],
-      rotation: [0, 0, 0],
-      scale: [1, 1, 1],
-      primitive: "baked",
-      params: {},
-      material: { ...defaultMaterial(mesh.name || "Imported", color) },
-      cameraFov: 45,
-      modifiers: [],
-      keyframes: [],
-      baked,
-    });
-  });
-  if (!added.length) throw new Error("No meshes in file");
-  const st = useStudio.getState();
-  st.pushHistory();
-  st.replaceScene([...st.objects, ...added], added[0]?.id ?? null);
 }
 
 export function exportProjectJson() {

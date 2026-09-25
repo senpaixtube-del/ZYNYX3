@@ -1,6 +1,5 @@
 import { i as __toESM } from "../_runtime.mjs";
-import { v as require_react } from "./@react-three/drei+[...].mjs";
-import { I as require_react_dom } from "./@tanstack/react-router+[...].mjs";
+import { _ as require_react_dom, b as require_react } from "./@react-three/drei+[...].mjs";
 //#region node_modules/sonner/dist/index.mjs
 var import_react = /* @__PURE__ */ __toESM(require_react(), 1);
 var import_react_dom = /* @__PURE__ */ __toESM(require_react_dom(), 1);
